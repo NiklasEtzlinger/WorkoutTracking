@@ -9,39 +9,17 @@ import Foundation
 import CoreML
 import Combine
 
-/// Ergebnis einer Rep-Klassifikation
+/// Result of a single rep classification.
 struct RepResult: Identifiable {
     let id = UUID()
     let repNumber: Int
-    let classification: String      // "correct", "half_rom", "too_fast"
+    let classification: String      // raw: "correct" / "half_rom" / "too_fast" / "unknown"
     let confidence: Double
     let timestamp: Date
-    
-    var isCorrect: Bool {
-        classification == "correct"
-    }
-    
-    var feedbackMessage: String {
-        switch classification {
-        case "correct":
-            return "Perfekt! ✓"
-        case "half_rom":
-            return "Unvollständige Bewegung"
-        case "too_fast":
-            return "Zu schnell"
-        default:
-            return "Unbekannt"
-        }
-    }
-    
-    var feedbackColor: String {
-        switch classification {
-        case "correct": return "green"
-        case "half_rom": return "orange"
-        case "too_fast": return "red"
-        default: return "gray"
-        }
-    }
+
+    var type: RepClassification { RepClassification(raw: classification) }
+    var isCorrect: Bool { type.isCorrect }
+    var feedbackMessage: String { type.feedback }
 }
 
 /// Workout-Statistiken
@@ -69,11 +47,16 @@ class WorkoutManager: ObservableObject {
     
     // MARK: - Published Properties
     @Published var isWorkoutActive: Bool = false
+    @Published var currentExercise: Exercise = .bicepCurl
     @Published var repResults: [RepResult] = []
     @Published var stats = WorkoutStats()
     @Published var lastFeedback: String = ""
     @Published var currentRepData: [[String: Double]] = []
-    @Published var debugInfo: String = ""  // Für Debugging
+    @Published var debugInfo: String = ""  // For debugging
+
+    /// Wall-clock bounds of the current/last workout (used when saving).
+    private(set) var startDate: Date = Date()
+    private(set) var endDate: Date?
     
     // MARK: - Private Properties
     private var model: BicepCurlClassifier?
@@ -113,22 +96,39 @@ class WorkoutManager: ObservableObject {
     }
     
     // MARK: - Workout Control
-    func startWorkout() {
+    func startWorkout(exercise: Exercise = .bicepCurl) {
+        currentExercise = exercise
+        startDate = Date()
+        endDate = nil
         isWorkoutActive = true
         repResults.removeAll()
         stats = WorkoutStats()
         sensorBuffer.removeAll()
         currentRepData.removeAll()
-        lastFeedback = "Starte deine Curls!"
+        lastFeedback = exercise.supportsFormGrading
+            ? "Let's go — give me clean reps!"
+            : "Let's go — counting your reps!"
         resetRepDetection()
-        
-        print("Workout started")
+
+        print("Workout started: \(exercise.displayName)")
     }
-    
+
     func stopWorkout() {
         isWorkoutActive = false
-        lastFeedback = "Workout beendet"
+        endDate = Date()
+        lastFeedback = "Workout complete"
         print("Workout stopped. Total reps: \(stats.totalReps)")
+    }
+
+    /// Seconds elapsed for the finished workout.
+    var elapsedSeconds: Double {
+        (endDate ?? Date()).timeIntervalSince(startDate)
+    }
+
+    /// Mean model confidence across all classified reps (0–1).
+    var averageConfidence: Double {
+        guard !repResults.isEmpty else { return 0 }
+        return repResults.map(\.confidence).reduce(0, +) / Double(repResults.count)
     }
     
     private func resetRepDetection() {
@@ -277,7 +277,30 @@ class WorkoutManager: ObservableObject {
    }
     
     // MARK: - Classification
+
+    /// Exercises that don't support form grading are simply counted.
+    private func countRepOnly() {
+        DispatchQueue.main.async {
+            self.stats.totalReps += 1
+            let result = RepResult(
+                repNumber: self.stats.totalReps,
+                classification: RepClassification.unknown.rawValue,
+                confidence: 1.0,
+                timestamp: Date()
+            )
+            self.repResults.append(result)
+            self.lastFeedback = "Rep \(self.stats.totalReps)"
+            PhoneConnectivityManager.shared.sendWorkoutFeedback(result)
+        }
+    }
+
     private func classifyRep(_ repData: [[String: Double]]) {
+        // Push-ups (and any future count-only exercise) skip the curl model.
+        guard currentExercise.supportsFormGrading else {
+            countRepOnly()
+            return
+        }
+
         guard let model = model else {
             print("Model not loaded")
             return

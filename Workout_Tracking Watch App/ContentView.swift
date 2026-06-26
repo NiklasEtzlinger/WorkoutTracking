@@ -2,7 +2,7 @@
 //  ContentView.swift
 //  Workout_Tracking Watch App
 //
-//  Updated with workout mode support and live feedback
+//  Mode-aware watch UI: idle, data collection and live workout.
 //
 
 import SwiftUI
@@ -10,13 +10,11 @@ import SwiftUI
 struct ContentView: View {
     @StateObject private var motionManager = MotionManager()
     @StateObject private var connectivityManager = WatchConnectivityManager.shared
-    
+
     var body: some View {
         VStack(spacing: 8) {
-            // Connection Status
             connectionStatusView
-            
-            // Content based on mode
+
             switch connectivityManager.currentMode {
             case .idle:
                 idleView
@@ -33,40 +31,42 @@ struct ContentView: View {
             }
         }
     }
-    
+
     // MARK: - Connection Status
+
     private var connectionStatusView: some View {
-        HStack {
+        HStack(spacing: 5) {
             Circle()
                 .fill(connectivityManager.isPhoneReachable ? Color.green : Color.orange)
-                .frame(width: 8, height: 8)
-            Text(connectivityManager.isPhoneReachable ? "Verbunden" : "Warte...")
+                .frame(width: 7, height: 7)
+            Text(connectivityManager.isPhoneReachable ? "Connected" : "Waiting…")
                 .font(.caption2)
+                .foregroundStyle(.secondary)
         }
     }
-    
+
     // MARK: - Idle View
+
     private var idleView: some View {
         VStack(spacing: 12) {
-            Image(systemName: "figure.strengthtraining.traditional")
-                .font(.system(size: 40))
-                .foregroundStyle(.blue)
-            
-            Text("Warte auf iPhone")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            
-            Text("Starte 'Workout' oder\n'Collect Data' am iPhone")
+            Image(systemName: "dumbbell.fill")
+                .font(.system(size: 38))
+                .foregroundStyle(.indigo)
+
+            Text("Ready to train")
+                .font(.headline)
+
+            Text("Start a workout or data collection from your iPhone.")
                 .font(.caption2)
-                .foregroundStyle(.secondary.opacity(0.7))
+                .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }
     }
-    
+
     // MARK: - Data Collection View
+
     private var dataCollectionView: some View {
         VStack(spacing: 10) {
-            // Recording indicator
             Circle()
                 .fill(motionManager.isRecording ? Color.red : Color.gray.opacity(0.3))
                 .frame(width: 80, height: 80)
@@ -81,36 +81,40 @@ struct ContentView: View {
                     }
                     .foregroundStyle(.white)
                 }
-            
-            Text(motionManager.isRecording ? "Aufnahme läuft..." : "Warte...")
+
+            Text(motionManager.isRecording ? "Recording…" : "Waiting…")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
     }
-    
+
     // MARK: - Workout View
+
     private var workoutView: some View {
-        VStack(spacing: 8) {
-            // Rep Count
-            Text("\(motionManager.workoutRepCount)")
-                .font(.system(size: 50, weight: .bold, design: .rounded))
-                .foregroundStyle(.blue)
-            
-            Text("Reps")
+        VStack(spacing: 6) {
+            Text(connectivityManager.workoutExerciseName)
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            
-            // Feedback
+                .lineLimit(1)
+
+            Text("\(motionManager.workoutRepCount)")
+                .font(.system(size: 52, weight: .bold, design: .rounded))
+                .foregroundStyle(.indigo)
+                .contentTransition(.numericText())
+
+            Text("Reps")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+
             if !motionManager.lastFeedback.isEmpty {
                 feedbackBadge
             }
-            
-            // Recording indicator
+
             if motionManager.isRecording {
                 HStack(spacing: 4) {
                     Circle()
                         .fill(Color.red)
-                        .frame(width: 8, height: 8)
+                        .frame(width: 7, height: 7)
                     Text("Live")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
@@ -118,16 +122,18 @@ struct ContentView: View {
             }
         }
     }
-    
+
     // MARK: - Feedback Badge
+
     private var feedbackBadge: some View {
         HStack(spacing: 4) {
             Image(systemName: motionManager.lastFeedbackIsCorrect ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
                 .font(.caption)
-            
+
             Text(motionManager.lastFeedback)
                 .font(.caption2)
                 .fontWeight(.medium)
+                .lineLimit(1)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)

@@ -2,292 +2,147 @@
 //  WorkoutView.swift
 //  Workout_Tracking
 //
-//  Live workout view with rep counting and form feedback
+//  The live, in-progress workout screen (used inside WorkoutFlowView).
+//  Form-graded exercises show a live accuracy ring; count-only
+//  exercises show a big rep counter.
 //
 
 import SwiftUI
 
-struct WorkoutView: View {
+struct ActiveWorkoutView: View {
     @StateObject private var workoutManager = WorkoutManager.shared
-    @StateObject private var connectivityManager = PhoneConnectivityManager.shared
-    
-    @State private var isCountingDown: Bool = false
-    @State private var countdown: Int = 5
-    @State private var timer: Timer?
-    
+    let onStop: () -> Void
+
+    private var grades: Bool { workoutManager.currentExercise.supportsFormGrading }
+    private var stats: WorkoutStats { workoutManager.stats }
+    private var formPct: Double { stats.correctPercentage }
+
     var body: some View {
-        VStack(spacing: 16) {
-            // Connection Status
-            HStack {
-                Circle()
-                    .fill(connectivityManager.isWatchReachable ? Color.green : Color.red)
-                    .frame(width: 12, height: 12)
-                Text(connectivityManager.isWatchReachable ? "Watch verbunden" : "Watch nicht verbunden")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            
-            if workoutManager.isWorkoutActive {
-                // MARK: - Active Workout View
-                activeWorkoutView
-            } else if isCountingDown {
-                // MARK: - Countdown View
-                countdownView
-            } else {
-                // MARK: - Start View
-                startView
-            }
-        }
-        .padding()
-        .navigationTitle("Workout")
-        .navigationBarTitleDisplayMode(.inline)
-    }
-    
-    // MARK: - Start View
-    private var startView: some View {
-        VStack(spacing: 30) {
-            Image(systemName: "figure.strengthtraining.traditional")
-                .font(.system(size: 80))
-                .foregroundStyle(.blue)
-            
-            Text("Bizeps Curl Tracker")
-                .font(.title2)
-                .fontWeight(.bold)
-            
-            Text("Das Modell analysiert deine Curls in Echtzeit und gibt dir Feedback zur Ausführung.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal)
-            
-            Button(action: startCountdown) {
-                HStack {
-                    Image(systemName: "play.fill")
-                    Text("Workout starten")
+        ScrollView {
+            VStack(spacing: 22) {
+                hero
+                    .padding(.top, 8)
+
+                if grades {
+                    statsRow
                 }
-                .font(.headline)
-                .foregroundStyle(.white)
-                .frame(width: 200, height: 50)
-                .background(connectivityManager.isWatchReachable ? Color.green : Color.gray)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+
+                feedbackBanner
+
+                if grades && !workoutManager.repResults.isEmpty {
+                    recentReps
+                }
             }
-            .disabled(!connectivityManager.isWatchReachable)
+            .padding()
+        }
+        .safeAreaInset(edge: .bottom) {
+            GradientButton(
+                title: "End Workout",
+                systemImage: "stop.fill",
+                gradient: Theme.gradient(for: Theme.tooFast),
+                shadowColor: Theme.tooFast,
+                action: onStop
+            )
+            .padding(.horizontal)
+            .padding(.bottom, 8)
+            .background(.ultraThinMaterial)
         }
     }
-    
-    // MARK: - Countdown View
-    private var countdownView: some View {
-        VStack(spacing: 20) {
-            Text("Mach dich bereit!")
-                .font(.title2)
-                .fontWeight(.semibold)
-            
-            ZStack {
-                Circle()
-                    .stroke(Color.orange.opacity(0.3), lineWidth: 10)
-                    .frame(width: 200, height: 200)
-                
-                Circle()
-                    .trim(from: 0, to: CGFloat(countdown) / 5.0)
-                    .stroke(Color.orange, style: StrokeStyle(lineWidth: 10, lineCap: .round))
-                    .frame(width: 200, height: 200)
-                    .rotationEffect(.degrees(-90))
-                    .animation(.linear(duration: 1), value: countdown)
-                
-                Text("\(countdown)")
-                    .font(.system(size: 80, weight: .bold, design: .monospaced))
-                    .foregroundStyle(.orange)
-                    .contentTransition(.numericText())
-            }
-            
-            Text("Watch am Handgelenk bereit?")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-        }
-    }
-    
-    // MARK: - Active Workout View
-    private var activeWorkoutView: some View {
-        VStack(spacing: 20) {
-            // Stats Header
-            HStack(spacing: 30) {
-                StatBox(title: "Reps", value: "\(workoutManager.stats.totalReps)", color: .blue)
-                StatBox(title: "Korrekt", value: "\(workoutManager.stats.correctReps)", color: .green)
-                StatBox(title: "Fehler", value: "\(workoutManager.stats.halfRomReps + workoutManager.stats.tooFastReps)", color: .red)
-            }
-            
-            // Accuracy Ring
-            ZStack {
-                Circle()
-                    .stroke(Color.gray.opacity(0.2), lineWidth: 15)
-                    .frame(width: 180, height: 180)
-                
-                Circle()
-                    .trim(from: 0, to: workoutManager.stats.totalReps > 0 ? workoutManager.stats.correctPercentage / 100 : 0)
-                    .stroke(
-                        workoutManager.stats.correctPercentage >= 80 ? Color.green :
-                        workoutManager.stats.correctPercentage >= 50 ? Color.orange : Color.red,
-                        style: StrokeStyle(lineWidth: 15, lineCap: .round)
-                    )
-                    .frame(width: 180, height: 180)
-                    .rotationEffect(.degrees(-90))
-                    .animation(.easeInOut, value: workoutManager.stats.correctPercentage)
-                
-                VStack {
-                    Text("\(Int(workoutManager.stats.correctPercentage))%")
-                        .font(.system(size: 40, weight: .bold, design: .rounded))
-                    Text("Korrekt")
+
+    // MARK: - Hero
+
+    @ViewBuilder private var hero: some View {
+        if grades {
+            ProgressRing(
+                progress: formPct / 100,
+                lineWidth: 18,
+                color: Theme.color(forFormScore: formPct)
+            ) {
+                VStack(spacing: 2) {
+                    Text("\(Int(formPct))%")
+                        .font(.system(size: 46, weight: .bold, design: .rounded))
+                        .contentTransition(.numericText())
+                    Text("Form")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
-            
-            // Last Feedback
-            feedbackBanner
-            
-            // Recent Reps
-            if !workoutManager.repResults.isEmpty {
-                recentRepsList
-            }
-            
-            Spacer()
-            
-            // Stop Button
-            Button(action: stopWorkout) {
-                HStack {
-                    Image(systemName: "stop.fill")
-                    Text("Workout beenden")
+            .frame(width: 210, height: 210)
+        } else {
+            ZStack {
+                Circle()
+                    .fill(Theme.gradient(for: workoutManager.currentExercise.tint))
+                VStack(spacing: 0) {
+                    Text("\(stats.totalReps)")
+                        .font(.system(size: 70, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                        .contentTransition(.numericText())
+                    Text("REPS")
+                        .font(.caption.weight(.semibold))
+                        .tracking(1)
+                        .foregroundStyle(.white.opacity(0.85))
                 }
-                .font(.headline)
-                .foregroundStyle(.white)
-                .frame(maxWidth: .infinity)
-                .frame(height: 50)
-                .background(Color.red)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
             }
+            .frame(width: 210, height: 210)
+            .shadow(color: workoutManager.currentExercise.tint.opacity(0.35), radius: 16, y: 8)
         }
     }
-    
-    // MARK: - Feedback Banner
+
+    // MARK: - Stats row
+
+    private var statsRow: some View {
+        HStack(spacing: 12) {
+            StatBox(title: "Reps", value: "\(stats.totalReps)", color: Theme.brand)
+            StatBox(title: "Correct", value: "\(stats.correctReps)", color: Theme.correct)
+            StatBox(title: "To fix", value: "\(stats.halfRomReps + stats.tooFastReps)", color: Theme.tooFast)
+        }
+        .cardStyle()
+    }
+
+    // MARK: - Feedback banner
+
     private var feedbackBanner: some View {
-        HStack {
-            if let lastRep = workoutManager.repResults.last {
-                Image(systemName: lastRep.isCorrect ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                    .foregroundStyle(lastRep.isCorrect ? .green : (lastRep.classification == "half_rom" ? .orange : .red))
-                
-                Text(lastRep.feedbackMessage)
+        HStack(spacing: 10) {
+            if let last = workoutManager.repResults.last {
+                Image(systemName: last.type.icon)
+                    .foregroundStyle(last.type.color)
+                Text(last.feedbackMessage)
                     .fontWeight(.medium)
-                
                 Spacer()
-                
-                Text("Rep \(lastRep.repNumber)")
+                Text("Rep \(last.repNumber)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
-                Image(systemName: "info.circle")
-                    .foregroundStyle(.blue)
+                Image(systemName: "info.circle.fill")
+                    .foregroundStyle(Theme.brand)
                 Text(workoutManager.lastFeedback)
+                Spacer(minLength: 0)
             }
         }
-        .padding()
-        .background(Color(.systemGray6))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .cardStyle(padding: 14)
         .animation(.easeInOut, value: workoutManager.repResults.count)
     }
-    
-    // MARK: - Recent Reps List
-    private var recentRepsList: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Letzte Wiederholungen")
+
+    // MARK: - Recent reps
+
+    private var recentReps: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Recent reps")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    ForEach(workoutManager.repResults.suffix(10).reversed()) { rep in
-                        RepBadge(rep: rep)
+                    ForEach(workoutManager.repResults.suffix(12).reversed()) { rep in
+                        RepBadge(number: rep.repNumber, classification: rep.type)
                     }
                 }
             }
         }
-    }
-    
-    // MARK: - Actions
-    private func startCountdown() {
-        isCountingDown = true
-        countdown = 5
-        
-        timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
-            withAnimation {
-                if countdown > 1 {
-                    countdown -= 1
-                } else {
-                    timer?.invalidate()
-                    timer = nil
-                    isCountingDown = false
-                    startWorkout()
-                }
-            }
-        }
-    }
-    
-    private func startWorkout() {
-        workoutManager.startWorkout()
-        connectivityManager.sendWorkoutStartCommand()
-    }
-    
-    private func stopWorkout() {
-        workoutManager.stopWorkout()
-        connectivityManager.sendWorkoutStopCommand()
-    }
-}
-
-// MARK: - Supporting Views
-
-struct StatBox: View {
-    let title: String
-    let value: String
-    let color: Color
-    
-    var body: some View {
-        VStack(spacing: 4) {
-            Text(value)
-                .font(.system(size: 28, weight: .bold, design: .rounded))
-                .foregroundStyle(color)
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .frame(width: 80)
-    }
-}
-
-struct RepBadge: View {
-    let rep: RepResult
-    
-    var body: some View {
-        VStack(spacing: 2) {
-            Image(systemName: rep.isCorrect ? "checkmark" : "xmark")
-                .font(.caption)
-                .fontWeight(.bold)
-            Text("\(rep.repNumber)")
-                .font(.caption2)
-        }
-        .frame(width: 36, height: 36)
-        .background(
-            rep.isCorrect ? Color.green.opacity(0.2) :
-            rep.classification == "half_rom" ? Color.orange.opacity(0.2) : Color.red.opacity(0.2)
-        )
-        .foregroundStyle(
-            rep.isCorrect ? .green :
-            rep.classification == "half_rom" ? .orange : .red
-        )
-        .clipShape(Circle())
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .cardStyle(padding: 14)
     }
 }
 
 #Preview {
-    NavigationStack {
-        WorkoutView()
-    }
+    ActiveWorkoutView(onStop: {})
 }

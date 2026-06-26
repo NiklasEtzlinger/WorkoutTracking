@@ -15,7 +15,7 @@ class PhoneConnectivityManager: NSObject, ObservableObject {
     @Published var isWatchReachable: Bool = false
     @Published var isWatchAppInstalled: Bool = false
     @Published var receivedSensorData: [[String: Double]] = []
-    @Published var watchStatus: String = "Nicht verbunden"
+    @Published var watchStatus: String = "Not connected"
     
     private override init() {
         super.init()
@@ -24,7 +24,7 @@ class PhoneConnectivityManager: NSObject, ObservableObject {
     
     private func setupSession() {
         guard WCSession.isSupported() else {
-            watchStatus = "Watch nicht unterstützt"
+            watchStatus = "Watch not supported"
             return
         }
         
@@ -44,10 +44,14 @@ class PhoneConnectivityManager: NSObject, ObservableObject {
     
     // MARK: - Workout Commands
     
-    func sendWorkoutStartCommand() {
-        sendCommand("startWorkout")
+    func sendWorkoutStartCommand(exerciseName: String? = nil) {
+        if let exerciseName {
+            sendCommand("startWorkout", extra: ["exercise": exerciseName])
+        } else {
+            sendCommand("startWorkout")
+        }
     }
-    
+
     func sendWorkoutStopCommand() {
         sendCommand("stopWorkout")
     }
@@ -69,14 +73,15 @@ class PhoneConnectivityManager: NSObject, ObservableObject {
         }
     }
     
-    private func sendCommand(_ command: String) {
+    private func sendCommand(_ command: String, extra: [String: Any] = [:]) {
         guard WCSession.default.isReachable else {
-            watchStatus = "Watch nicht erreichbar"
+            watchStatus = "Watch not reachable"
             print("Watch not reachable")
             return
         }
-        
-        let message = ["command": command]
+
+        var message: [String: Any] = ["command": command]
+        message.merge(extra) { _, new in new }
         WCSession.default.sendMessage(message, replyHandler: { response in
             print("Watch response: \(response)")
         }, errorHandler: { error in
@@ -138,22 +143,22 @@ extension PhoneConnectivityManager: WCSessionDelegate {
         DispatchQueue.main.async {
             switch activationState {
             case .activated:
-                self.watchStatus = "Verbunden"
+                self.watchStatus = "Connected"
                 self.isWatchAppInstalled = session.isWatchAppInstalled
                 self.isWatchReachable = session.isReachable
             case .inactive:
-                self.watchStatus = "Inaktiv"
+                self.watchStatus = "Inactive"
             case .notActivated:
-                self.watchStatus = "Nicht aktiviert"
+                self.watchStatus = "Not activated"
             @unknown default:
-                self.watchStatus = "Unbekannt"
+                self.watchStatus = "Unknown"
             }
         }
     }
     
     func sessionDidBecomeInactive(_ session: WCSession) {
         DispatchQueue.main.async {
-            self.watchStatus = "Inaktiv"
+            self.watchStatus = "Inactive"
         }
     }
     
@@ -164,7 +169,7 @@ extension PhoneConnectivityManager: WCSessionDelegate {
     func sessionReachabilityDidChange(_ session: WCSession) {
         DispatchQueue.main.async {
             self.isWatchReachable = session.isReachable
-            self.watchStatus = session.isReachable ? "Verbunden" : "Nicht erreichbar"
+            self.watchStatus = session.isReachable ? "Connected" : "Not reachable"
         }
     }
     

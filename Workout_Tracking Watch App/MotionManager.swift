@@ -63,7 +63,7 @@ class MotionManager: ObservableObject {
         workoutBuffer.removeAll()
         dataPointCount = 0
         workoutRepCount = 0
-        lastFeedback = mode == .workout ? "Los geht's!" : ""
+        lastFeedback = mode == .workout ? "Let's go!" : ""
         
         motionManager.deviceMotionUpdateInterval = 1.0 / sampleRate
         motionManager.startDeviceMotionUpdates(to: .main) { [weak self] motion, error in

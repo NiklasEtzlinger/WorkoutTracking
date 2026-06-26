@@ -24,6 +24,7 @@ class WatchConnectivityManager: NSObject, ObservableObject {
     @Published var receivedCommand: String = ""
     @Published var lastFeedback: WorkoutFeedback?
     @Published var currentMode: AppMode = .idle
+    @Published var workoutExerciseName: String = "Workout"
     
     enum AppMode {
         case idle
@@ -125,6 +126,7 @@ extension WatchConnectivityManager: WCSessionDelegate {
                     replyHandler(["status": "tracking stopped"])
                     
                 case "startWorkout":
+                    self.workoutExerciseName = message["exercise"] as? String ?? "Workout"
                     self.currentMode = .workout
                     self.onStartWorkout?()
                     replyHandler(["status": "workout started"])

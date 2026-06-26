@@ -12,9 +12,9 @@ enum ExerciseType: String, CaseIterable {
     
     var displayName: String {
         switch self {
-        case .correct: return "✓ Korrekt"
+        case .correct: return "✓ Correct"
         case .halfRom: return "✗ Half ROM"
-        case .tooFast: return "✗ Too Fast"
+        case .tooFast: return "✗ Too fast"
         }
     }
 }
@@ -57,7 +57,7 @@ struct GetDataView: View {
                     }
                     
                     HStack {
-                        Text("Typ:")
+                        Text("Type:")
                             .frame(width: 70, alignment: .leading)
                         Picker("", selection: $selectedType) {
                             ForEach(ExerciseType.allCases, id: \.self) { type in
@@ -108,19 +108,19 @@ struct GetDataView: View {
             }
             .disabled(isCountingDown || !connectivityManager.isWatchReachable || personName.isEmpty)
             
-            // Hinweis wenn Name fehlt
+            // Hint when name is missing
             if personName.isEmpty {
-                Text("Bitte Namen eingeben")
+                Text("Please enter a name")
                     .font(.caption)
                     .foregroundStyle(.orange)
             }
-            
-            // Daten Info
-            Text("\(connectivityManager.receivedSensorData.count) Datenpunkte gesammelt")
+
+            // Data info
+            Text("\(connectivityManager.receivedSensorData.count) data points collected")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
-            
-            // Vorschau Dateiname
+
+            // Filename preview
             if !personName.isEmpty && !connectivityManager.receivedSensorData.isEmpty {
                 Text("→ \(generateFileName())")
                     .font(.caption2)
